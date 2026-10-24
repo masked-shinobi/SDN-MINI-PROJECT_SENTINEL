@@ -1,0 +1,142 @@
+SDN SENTINEL - RUN AND DEMO NOTES
+================================
+
+This file records the working WSL2 Ubuntu startup commands and useful ways to
+explore the project.
+
+Prerequisites already set up
+----------------------------
+- Ubuntu 22.04 / WSL2
+- Mininet and Open vSwitch installed
+- Python environment: ~/sdn-venv (Ryu 4.34, FastAPI, Uvicorn, requests)
+- Ryu's installed wsgi.py has the Eventlet compatibility adjustment applied.
+- Java is listening on port 8080, so Ryu REST uses port 8081. OpenFlow stays on 6633.
+- backend/services/ryu_client.py reads RYU_API_URL; set it to http://127.0.0.1:8081.
+- Frontend uses http://localhost:8000 by default.
+
+START THE PROJECT
+=================
+Keep three Ubuntu terminals open while using the project.
+
+Terminal 1 - Ryu SDN controller
+--------------------------------
+cd "/mnt/d/SEMESTER - 7/Software Defined Networks/SDN Networking Project/controller"
+source ~/sdn-venv/bin/activate
+ryu-manager --verbose --wsapi-port 8081 sdn_controller.py ryu.app.ofctl_rest
+
+Expected: controller initializes; OpenFlow listens on 6633; REST listens on 8081.
+The Eventlet deprecation warning is informational. Keep this command running.
+
+Terminal 2 - Mininet topology
+-----------------------------
+cd "/mnt/d/SEMESTER - 7/Software Defined Networks/SDN Networking Project/network"
+sudo mn -c
+sudo python3 topology.py
+
+Expected: Mininet starts h1, h2, h3 and switch s1, then shows the "mininet>" prompt.
+Keep this prompt open. Do not close it while using the virtual network.
+
+Terminal 3 - Backend API
+------------------------
+cd "/mnt/d/SEMESTER - 7/Software Defined Networks/SDN Networking Project/backend"
+source ~/sdn-venv/bin/activate
+export RYU_API_URL=http://127.0.0.1:8081
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+Expected: Uvicorn reports that it is running on port 8000. Keep it running.
+
+Frontend - Windows PowerShell (only if it is not already running)
+-----------------------------------------------------------------
+cd "D:\SEMESTER - 7\Software Defined Networks\SDN Networking Project"
+npm.cmd run dev
+
+Open http://localhost:3000 in a browser. The frontend has Overview, Topology,
+Incidents, Flows, and Demo views.
+
+CHECK THAT THE SERVICES ARE CONNECTED
+=====================================
+Run from a fourth Ubuntu terminal:
+
+curl http://127.0.0.1:8081/stats/switches
+curl http://127.0.0.1:8081/stats/flow/1
+curl http://127.0.0.1:8000/api/health
+
+After Mininet connects, the switch endpoint should return [1]. Backend health should
+report status healthy. Interactive API documentation: http://localhost:8000/docs.
+
+EXPLORE THE MININET NETWORK (Terminal 2, at mininet>)
+=====================================================
+help                         List Mininet CLI commands
+nodes                        List h1, h2, h3, s1, c0
+net                          Show connections; this is a single-switch, three-host star
+links                        Show link status
+dump                         Show host and switch details
+pingall                      Test connectivity among all Mininet hosts
+h1 ping -c 3 192.168.5.24    Test h1 to h2
+h1 ping -c 3 192.168.1.50    Test h1 to remediation host h3
+h2 ping -c 3 192.168.1.50    Test normal host h2 to h3
+sh ovs-vsctl show            Inspect Open vSwitch bridge and ports
+sh ovs-ofctl -O OpenFlow13 dump-flows s1   Inspect actual OpenFlow rules
+exit                         Stop the Mininet topology and leave its CLI
+
+Topology type: single-switch, three-host star. Hosts h1, h2, and h3 each connect
+directly to switch s1; Ryu controller c0 controls s1. In `net` output,
+`h1-eth0:s1-eth1` means h1's interface h1-eth0 connects to switch port s1-eth1.
+Similarly, h2-eth0 connects to s1-eth2, and h3-eth0 connects to s1-eth3.
+
+During quarantine, h1-to-h2 should be blocked while h1-to-h3 remediation is allowed.
+After restoration, h1-to-h2 should work again. Run the ping commands before, during,
+and after quarantine to compare actual Mininet connectivity.
+
+EXPLORE RYU (Terminal 1 logs, or a fourth Ubuntu terminal)
+==========================================================
+curl http://127.0.0.1:8081/stats/switches
+curl http://127.0.0.1:8081/stats/flow/1
+
+Watch Terminal 1 for switch connect/disconnect and flow installation messages.
+Custom Sentinel routes are POST /sentinel/quarantine and /sentinel/restore.
+The OpenFlow REST API also provides switch and flow statistics under /stats.
+
+EXPLORE THE BACKEND (Terminal 3 logs, browser, or fourth Ubuntu terminal)
+=========================================================================
+curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8000/api/topology
+curl http://127.0.0.1:8000/api/flows
+curl http://127.0.0.1:8000/api/incidents
+curl http://127.0.0.1:8000/api/verification/tests
+
+Browse all routes and interactive request forms at http://localhost:8000/docs.
+
+CLI DEMO (fourth Ubuntu terminal; backend must be running)
+==========================================================
+cd "/mnt/d/SEMESTER - 7/Software Defined Networks/SDN Networking Project"
+source ~/sdn-venv/bin/activate
+python cli_demo.py
+
+The interactive menu lets you view topology/flows, run verification, trigger a scan,
+enforce quarantine, clean and verify, restore, or reset. Choose menu item 1 for the
+step-by-step full demonstration. `python cli_demo.py --auto` runs without pauses.
+Do not run the CLI demo and click through the Dashboard Demo at the same time; both
+change the same backend state.
+
+DEMO SUMMARY
+============
+1. Begin at baseline: h1 (192.168.5.23), h2 (192.168.5.24), and h3 (192.168.1.50)
+   attach to Open vSwitch s1. Ryu learns and forwards traffic using OpenFlow 1.3.
+2. Simulate a scan from h1 (148 new flows in a 5-second window against a threshold
+   of 100) and review the incident in the dashboard.
+3. Quarantine h1. Ryu installs high-priority cookie 0x9000 flows: ARP is allowed,
+   h1-to-h3 remediation traffic is allowed, and other IPv4 traffic to/from h1 drops.
+4. Clean and verify h1 through the demo workflow. Check host connectivity with
+   Mininet ping commands and inspect the switch flows.
+5. Restore the network. Ryu deletes cookie 0x9000 quarantine flows; confirm h1-to-h2
+   connectivity is back and inspect the flow table again.
+
+The dashboard/backend also display a verification matrix. Use Mininet ping commands
+for direct data-plane connectivity checks. The default backend health state is NORMAL.
+
+SHUTDOWN
+========
+- Mininet: type exit at the mininet> prompt.
+- Ryu and backend: press Ctrl+C in their terminals.
+- Frontend: press Ctrl+C in its PowerShell terminal.

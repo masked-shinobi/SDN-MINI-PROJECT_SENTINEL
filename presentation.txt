@@ -1,0 +1,145 @@
+SDN SENTINEL - PRESENTATION SPEECH
+==================================
+
+Suggested length: 5-7 minutes
+Keep the dashboard open at http://localhost:3000. Keep the three Ubuntu terminals
+running: Ryu, Mininet, and the backend. Text in [square brackets] is a presenter
+action and is not spoken aloud.
+
+OPENING
+-------
+Good morning. My project is called SDN Sentinel. It demonstrates how a software-
+defined network can detect a suspicious host, isolate it, allow it to reach a
+remediation server, and then restore normal network access.
+
+The host we treat as infected is h1, with IP address 192.168.5.23. The normal host is
+h2, at 192.168.5.24. The remediation server is h3, at 192.168.1.50. All three hosts
+connect through the Open vSwitch named s1. Ryu acts as the controller and uses
+OpenFlow 1.3 to manage the switch.
+
+THE TWO VIEWS: DASHBOARD AND LIVE NETWORK
+-----------------------------------------
+[Show the Overview page.]
+
+This is the graphical dashboard. It gives a quick summary of the network, its
+current security state, active incidents, and flow rules. I will use the dashboard
+to explain the security workflow, and the Ubuntu terminals to show the real
+controller and virtual network behind it.
+
+[Open Live Topology. Point to h1, h2, h3, s1, and their links.]
+
+This topology view shows the hosts and switch. The backend supplies the displayed
+security state. In the Mininet terminal, I can also inspect the running network
+directly with commands such as `nodes`, `net`, and `dump`.
+
+[Show the Ubuntu terminal running Ryu.]
+
+This terminal is the Ryu controller. It listens for OpenFlow connections from the
+switch on port 6633. Its REST API uses port 8081 on this computer because another
+program is already using port 8080. When the switch connects, Ryu logs the switch
+connection and installs its starting flow rule.
+
+[Show the Ubuntu terminal at the `mininet>` prompt.]
+
+This is Mininet, which creates the hosts and switch as a virtual network. The
+command `pingall` checks communication between hosts. The command
+`sh ovs-ofctl -O OpenFlow13 dump-flows s1` displays the flow rules actually
+installed on the switch.
+
+[Show the Ubuntu terminal running Uvicorn.]
+
+This is the backend API. It connects the dashboard to the network controller and
+provides the incident, quarantine, remediation, and verification operations.
+
+DEMO: DETECTION, QUARANTINE, REMEDIATION, RESTORATION
+----------------------------------------------------
+[Open Demo Lab & Tests.]
+
+The Demo Lab presents the workflow as six steps. I will run them in order so we can
+see how the host state and flow policy change.
+
+Step 1 is Baseline Ping. It resets the demo to its normal starting state and shows
+the baseline connectivity results.
+
+[Click `1. Baseline Ping` and wait for it to finish.]
+
+Step 2 is Trigger Scan. The demo simulates a scan from h1 by reporting 148 new flows
+in five seconds. The configured threshold is 100, so this activity is flagged as
+suspicious. This button simulates the detection event; it does not run an actual
+port-scanning program inside h1.
+
+[Click `2. Trigger Scan`. Point out the DETECTED state and the scenario log.]
+
+Step 3 is Auto-Quarantine. The backend asks Ryu to install high-priority rules on
+s1. The quarantine rules use cookie 0x9000 so they can be identified and removed
+together later.
+
+The policy keeps ARP available, permits h1 to communicate with the remediation
+server h3, and drops other IPv4 traffic to or from h1. The other host, h2, remains
+outside the quarantine policy.
+
+[Click `3. Auto-Quarantine`. Show the Ryu log, then open the Flows page and refresh
+the table. Point out the 0x9000 quarantine rules and their priorities.]
+
+The Flows page makes the policy easier to read. Each entry has a match condition,
+an action, a priority, and a cookie. The cookie helps the controller distinguish
+quarantine rules from normal forwarding rules.
+
+Step 4 is Prove Isolation. The dashboard shows its verification matrix for the
+expected allow and block cases.
+
+[Click `4. Prove Isolation`.]
+
+To check the actual virtual network as well, I can run pings from the Mininet prompt.
+During quarantine, h1 should not reach h2, but it should still reach h3. A normal
+host such as h2 should retain its permitted communication.
+
+[At `mininet>`, run these one at a time:]
+h1 ping -c 3 192.168.5.24
+h1 ping -c 3 192.168.1.50
+h2 ping -c 3 192.168.1.50
+
+Step 5 is Clean and Verify. The demo represents remediation through h3 and then
+marks the host as verified, ready for restoration.
+
+[Return to Demo Lab & Tests and click `5. Clean & Verify`. Point out the updated
+state and scenario log.]
+
+Step 6 is Restore Network. Ryu removes the rules with cookie 0x9000. Normal
+forwarding can then resume.
+
+[Click `6. Restore Network`. Return to the Mininet prompt and run:]
+h1 ping -c 3 192.168.5.24
+
+The h1-to-h2 ping should work again after the quarantine rules are removed. On the
+Flows page, refresh the table and confirm that the quarantine rules are gone.
+
+INCIDENTS AND FINAL SUMMARY
+---------------------------
+[Open Incidents.]
+
+The Incidents page keeps a record of the simulated detection event, including the
+source host and flow count. This helps an operator review what triggered the
+response.
+
+To summarize, SDN Sentinel demonstrates a complete response cycle. It flags
+suspicious activity from h1, applies quarantine rules through Ryu, preserves access
+to the remediation server, and removes the quarantine rules after verification.
+The dashboard explains the policy, while Mininet and the switch flow table let us
+inspect and check the network directly.
+
+Thank you. I am happy to take questions.
+
+PRESENTER CHECKLIST
+-------------------
+- Start Ryu, Mininet, and the backend before opening the dashboard.
+- Confirm Ryu reports switch [1] at http://127.0.0.1:8081/stats/switches.
+- Confirm backend health at http://127.0.0.1:8000/api/health.
+- Keep the Mininet CLI visible and ready at `mininet>`.
+- Start the Demo Lab at Step 1, then run all six steps in order.
+- Run real Mininet pings during quarantine and after restoration.
+- Refresh the Flows page after quarantine and restoration to show the rule change.
+- The dashboard verification matrix is an application-level demo report; use Mininet
+  pings for direct data-plane connectivity evidence.
+- Avoid using the CLI demo and dashboard demo simultaneously because they both
+  change the same backend state.

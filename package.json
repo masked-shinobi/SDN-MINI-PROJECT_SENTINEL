@@ -1,0 +1,25 @@
+{
+  "name": "sdn-sentinel",
+  "version": "1.0.0",
+  "description": "SDN Sentinel - Automated Host Quarantine & Remediation System via OpenFlow 1.3",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start",
+    "lint": "npm --prefix frontend run lint",
+    "backend": "cd backend && python -m uvicorn main:app --reload --port 8000",
+    "cli": "python cli_demo.py",
+    "cli:auto": "python cli_demo.py --auto"
+  },
+  "keywords": [
+    "sdn",
+    "openflow",
+    "ryu",
+    "security",
+    "quarantine",
+    "nextjs"
+  ],
+  "author": "",
+  "license": "MIT"
+}
